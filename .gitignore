@@ -1,1 +1,19 @@
+# Виртуальное окружение
+venv/
+.venv/
 __pycache__/
+
+# Сгенерированные медиафайлы и временные папки
+web_uploads/
+web_outputs/
+*.mp4
+*.mp3
+*.wav
+
+# Исключения для исходных демо-медиа
+!input_media/
+!input_media/**
+
+# Системные файлы
+.vscode/
+clean.py
