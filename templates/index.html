@@ -24,7 +24,7 @@
             </div>
             <div class="header-status">
                 <span class="status-indicator online"></span>
-                <span class="status-text">Voice Engine: ru-RU-DmitryNeural</span>
+                <span class="status-text" id="headerVoiceIndicator">Voice Engine: ru-RU-DmitryNeural</span>
             </div>
         </header>
 
@@ -36,7 +36,7 @@
                     <div class="panel-step-num">01</div>
                     <div class="panel-title-group">
                         <h2>Сценарий и параметры ролика</h2>
-                        <span class="panel-desc">Синхронизация текста диктора, 5 сцен и метаданных</span>
+                        <span class="panel-desc">Синхронизация текста диктора, музыки, 5 сцен и метаданных</span>
                     </div>
                 </div>
 
@@ -64,20 +64,84 @@
                         <input type="text" id="dishName" value="Яблочный крамбл" placeholder="Например: Яблочный крамбл">
                     </div>
                     <div class="form-group flex-1">
-                        <label for="customAudioInput">Своя аудиодорожка (необязательно)</label>
+                        <label for="voiceSpeakerSelect">Нейросетевой голос (Edge-TTS)</label>
+                        <div class="select-wrapper">
+                            <select id="voiceSpeakerSelect" class="form-select">
+                                <option value="ru-RU-DmitryNeural" selected>🎙️ ru-RU-DmitryNeural (Шеф / по умолчанию)</option>
+                                <option value="ru-RU-SvetlanaNeural">🎙️ ru-RU-SvetlanaNeural (Уютный домашний)</option>
+                                <option value="ru-RU-DenisNeural">🎙️ ru-RU-DenisNeural (Бодрый стритфуд)</option>
+                                <option value="ru-RU-DariyaNeural">🎙️ ru-RU-DariyaNeural (Эстетика)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group flex-1">
+                        <label for="customAudioInput">Своя аудиодорожка диктора (необязательно)</label>
                         <div class="file-input-wrapper">
                             <input type="file" id="customAudioInput" accept="audio/*">
-                            <span class="file-input-placeholder" id="customAudioPlaceholder">Выберите MP3 / WAV (или оставьте Дмитрия)</span>
+                            <span class="file-input-placeholder" id="customAudioPlaceholder">Выберите MP3 / WAV (заменит нейроголос)</span>
                         </div>
                     </div>
                 </div>
 
                 <div class="form-group">
                     <div class="label-with-counter">
-                        <label for="voiceText">Текст диктора Дмитрия</label>
+                        <label for="voiceText">Текст диктора</label>
                         <span class="word-counter" id="voiceWordCount">40–44 слова</span>
                     </div>
                     <textarea id="voiceText" rows="3" placeholder="Введите текст диктора...">Хватит сушить крамбл в духовке сорок минут! На одной сковороде карамелизуем яблоки с корицей а овсяную крошку обжариваем отдельно на сливочном масле. Соединяем слои перед подачей с ледяным пломбиром. Точные пропорции ждут вас в описании.</textarea>
+                </div>
+
+                <!-- Music Module with Audio Ducking -->
+                <div class="music-module-card">
+                    <div class="music-module-header">
+                        <div class="music-toggle-wrap">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="bgMusicToggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <div class="music-title-group">
+                                <label for="bgMusicToggle" class="music-module-title">🎵 Включить фоновую музыку (Audio Ducking)</label>
+                                <span class="music-module-desc">Автоприглушение музыки под голос (голос 100%) и плавное затухание (1.5 сек)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="music-controls-body" id="musicControlsBody" style="display: none;">
+                        <div class="form-row music-settings-row">
+                            <div class="form-group flex-2">
+                                <label for="bgMusicSelect">Фоновый трек</label>
+                                <div class="music-select-group">
+                                    <div class="select-wrapper flex-1">
+                                        <select id="bgMusicSelect" class="form-select">
+                                            <option value="">Загрузка списка треков...</option>
+                                        </select>
+                                    </div>
+                                    <button type="button" class="btn-music-upload" id="uploadMusicBtn">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M12 5v14M5 12h14"/>
+                                        </svg>
+                                        <span>+ Загрузить свой трек</span>
+                                    </button>
+                                    <input type="file" id="musicFileInput" accept="audio/mp3,audio/mpeg,audio/wav,audio/aac,audio/ogg" style="display: none;">
+                                </div>
+                            </div>
+
+                            <div class="form-group flex-1">
+                                <div class="label-with-counter">
+                                    <label for="bgMusicVolume">Громкость фона</label>
+                                    <span class="volume-badge" id="bgMusicVolumeVal">15%</span>
+                                </div>
+                                <div class="volume-slider-wrap">
+                                    <span class="speed-tick-label">5%</span>
+                                    <input type="range" id="bgMusicVolume" min="0.05" max="0.40" step="0.01" value="0.15">
+                                    <span class="speed-tick-label">40%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="form-group">
@@ -163,7 +227,7 @@
                     <div class="steps-indicators">
                         <div class="step-indicator" id="step1Indicator">
                             <div class="step-dot">1</div>
-                            <span class="step-label">Синтез голоса Дмитрия</span>
+                            <span class="step-label">Синтез голоса</span>
                         </div>
                         <div class="step-indicator" id="step2Indicator">
                             <div class="step-dot">2</div>
@@ -171,7 +235,7 @@
                         </div>
                         <div class="step-indicator" id="step3Indicator">
                             <div class="step-dot">3</div>
-                            <span class="step-label">Финальный рендер</span>
+                            <span class="step-label">Сведение и финальный рендер</span>
                         </div>
                     </div>
                 </div>
@@ -179,7 +243,7 @@
 
             <!-- Action Render Button -->
             <div class="action-footer">
-                <button class="primary-btn" id="generateBtn" onclick="startGeneration()">
+                <button type="button" class="primary-btn" id="generateBtn" onclick="startGeneration()">
                     <span class="btn-icon">🎬</span>
                     <span class="btn-text">Смонтировать вертикальный Reel (20 сек)</span>
                 </button>
@@ -191,12 +255,34 @@
                     <div class="panel-step-num success">✓</div>
                     <div class="panel-title-group">
                         <h2>Готовый кулинарный ролик</h2>
-                        <span class="panel-desc">Смонтировано в разрешении 1080×1920 (9:16) с наложением титров и голоса</span>
+                        <span class="panel-desc">Смонтировано в разрешении 1080×1920 (9:16) с наложением титров, голоса и музыки</span>
                     </div>
                 </div>
 
                 <div class="video-preview-wrapper">
                     <video id="resultPlayer" controls playsinline></video>
+                </div>
+
+                <!-- Панель «Регулировка скорости» -->
+                <div class="speed-control-panel">
+                    <div class="speed-panel-header">
+                        <div class="speed-title-wrap">
+                            <span class="speed-icon">⚡</span>
+                            <span class="speed-title">Регулировка скорости</span>
+                        </div>
+                        <span class="speed-badge" id="speedValue">1.0x</span>
+                    </div>
+                    <div class="speed-slider-row">
+                        <span class="speed-tick-label">0.75x</span>
+                        <input type="range" id="videoSpeedSlider" min="0.75" max="1.75" step="0.25" value="1.0">
+                        <span class="speed-tick-label">1.75x</span>
+                    </div>
+                    <div class="speed-actions">
+                        <button type="button" id="downloadSpeedBtn" class="btn btn-secondary">
+                            <span class="speed-btn-icon">⚡</span>
+                            <span class="speed-btn-label">Скачать с этой скоростью (<span id="btnSpeedVal">1.0x</span>)</span>
+                        </button>
+                    </div>
                 </div>
 
                 <div class="download-row">

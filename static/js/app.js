@@ -7,6 +7,7 @@ const TOTAL_SLOTS = 5;
 let sceneSlots = new Array(TOTAL_SLOTS).fill(null);
 let targetReplaceSlotIndex = null;
 let progressInterval = null;
+let isGenerating = false;
 
 // DOM Elements
 const toastContainer = document.getElementById('toastContainer');
@@ -151,6 +152,11 @@ function initSlots() {
     renderSlots();
     setupDropzoneListeners();
     setupAudioInputListener();
+    setupVoiceSpeakerListener();
+    setupMusicModule();
+    loadMusicList();
+    setupSpeedControlListeners();
+    setupGenerateButton();
     const voiceEl = document.getElementById('voiceText');
     if (voiceEl) {
         voiceEl.addEventListener('input', updateVoiceWordCount);
@@ -435,6 +441,113 @@ function setupAudioInputListener() {
 }
 
 // ==============================================================================
+
+function setupVoiceSpeakerListener() {
+    const speakerSelect = document.getElementById('voiceSpeakerSelect');
+    const headerIndicator = document.getElementById('headerVoiceIndicator');
+    if (speakerSelect && headerIndicator) {
+        speakerSelect.addEventListener('change', () => {
+            headerIndicator.textContent = 'Voice Engine: ' + speakerSelect.value;
+        });
+    }
+}
+
+async function loadMusicList(selectFilename = null) {
+    const select = document.getElementById('bgMusicSelect');
+    if (!select) return;
+
+    try {
+        const res = await fetch('/get_music_list');
+        const data = await res.json();
+        if (data.status === 'ok' && Array.isArray(data.tracks)) {
+            select.innerHTML = '';
+            data.tracks.forEach(track => {
+                const opt = document.createElement('option');
+                opt.value = track.filename;
+                opt.textContent = track.title;
+                select.appendChild(opt);
+            });
+
+            if (selectFilename) {
+                select.value = selectFilename;
+            } else if (data.tracks.length > 0 && !select.value) {
+                select.value = data.tracks[0].filename;
+            }
+        }
+    } catch (err) {
+        console.error('Error loading music list:', err);
+    }
+}
+
+function setupMusicModule() {
+    const toggle = document.getElementById('bgMusicToggle');
+    const body = document.getElementById('musicControlsBody');
+    const volumeSlider = document.getElementById('bgMusicVolume');
+    const volumeVal = document.getElementById('bgMusicVolumeVal');
+    const uploadBtn = document.getElementById('uploadMusicBtn');
+    const fileInput = document.getElementById('musicFileInput');
+
+    if (toggle && body) {
+        toggle.addEventListener('change', () => {
+            if (toggle.checked) {
+                body.style.display = 'block';
+                if (document.getElementById('bgMusicSelect')?.options.length <= 1) {
+                    loadMusicList();
+                }
+            } else {
+                body.style.display = 'none';
+            }
+        });
+    }
+
+    if (volumeSlider && volumeVal) {
+        volumeSlider.addEventListener('input', () => {
+            const pct = Math.round(parseFloat(volumeSlider.value) * 100);
+            volumeVal.textContent = pct + '%';
+        });
+    }
+
+    if (uploadBtn && fileInput) {
+        uploadBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+
+            const originalHtml = uploadBtn.innerHTML;
+            uploadBtn.disabled = true;
+            uploadBtn.innerHTML = '<span>⏳ Загрузка...</span>';
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const res = await fetch('/upload_music', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await res.json();
+                if (res.ok && data.status === 'ok') {
+                    showToast('✓ Фоновый трек «' + (data.title || data.filename) + '» успешно загружен!', 'success');
+                    await loadMusicList(data.filename);
+                } else {
+                    showToast('Ошибка загрузки трека: ' + (data.message || 'Сбой'), 'error');
+                }
+            } catch (err) {
+                showToast('Ошибка загрузки: ' + err.message, 'error');
+            } finally {
+                fileInput.value = '';
+                uploadBtn.disabled = false;
+                uploadBtn.innerHTML = originalHtml;
+            }
+        });
+    }
+}
+
 // 4. MULTI-STEP PROGRESS & RENDER PIPELINE
 // ==============================================================================
 function setProgressStep(stepNum, percent) {
@@ -519,10 +632,23 @@ function stopProgressAnimation(isSuccess) {
 }
 
 // ==============================================================================
-// 5. START GENERATION (BACKEND CALL)
+// 5. START GENERATION (BACKEND CALL) WITH INSTANT VISUAL FEEDBACK & LOCKING
 // ==============================================================================
+function setupGenerateButton() {
+    const btn = document.getElementById('generateBtn');
+    if (btn) {
+        btn.onclick = null; // Remove inline handler if present
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            startGeneration();
+        });
+    }
+}
+
 async function startGeneration() {
-    // Validate that all 5 scene slots are filled
+    if (isGenerating) return;
+
+    // 1. Validate that all 5 scene slots are filled
     const missingSlots = [];
     for (let i = 0; i < TOTAL_SLOTS; i++) {
         if (!sceneSlots[i]) missingSlots.push(i + 1);
@@ -545,16 +671,30 @@ async function startGeneration() {
     const statusBox = document.getElementById('statusBox');
     const resultCard = document.getElementById('resultCard');
 
-    btn.disabled = true;
-    statusBox.style.display = 'block';
-    resultCard.style.display = 'none';
+    // 2. Instant lock and visual transition on first click
+    isGenerating = true;
+    if (btn) {
+        btn.disabled = true;
+        btn.classList.add('loading');
+        btn.innerHTML = '<span class="btn-icon">⏳</span><span class="btn-text">Идет монтаж...</span>';
+    }
+    if (statusBox) statusBox.style.display = 'block';
+    if (resultCard) resultCard.style.display = 'none';
 
     startProgressAnimation();
 
+    // 3. Prepare FormData
     const formData = new FormData();
     formData.append('dish_name', dishNameVal);
     formData.append('voice_text', voiceTextVal);
+    formData.append('voice_speaker', document.getElementById('voiceSpeakerSelect')?.value || 'ru-RU-DmitryNeural');
     formData.append('post_kit', document.getElementById('fullPostKit')?.value || '');
+
+    // Background music params
+    const bgMusicToggle = document.getElementById('bgMusicToggle');
+    formData.append('bg_music_enabled', bgMusicToggle && bgMusicToggle.checked ? 'true' : 'false');
+    formData.append('bg_music_track', document.getElementById('bgMusicSelect')?.value || '');
+    formData.append('bg_music_volume', document.getElementById('bgMusicVolume')?.value || '0.15');
 
     const subs = [
         document.getElementById('sub0')?.value || '',
@@ -590,28 +730,155 @@ async function startGeneration() {
             const link = document.getElementById('downloadLink');
             const postLink = document.getElementById('downloadPostKit');
 
-            player.src = data.video_url + '?t=' + new Date().getTime();
-            link.href = data.video_url;
-            postLink.href = data.post_kit_url;
+            if (player) player.src = data.video_url + '?t=' + new Date().getTime();
+            if (link) link.href = data.video_url;
+            if (postLink) postLink.href = data.post_kit_url;
+
+            // Reset speed slider to default 1.0x
+            const speedSlider = document.getElementById('videoSpeedSlider');
+            const speedVal = document.getElementById('speedValue');
+            const btnSpeedVal = document.getElementById('btnSpeedVal');
+            if (speedSlider) speedSlider.value = '1.0';
+            if (speedVal) speedVal.textContent = '1.0x';
+            if (btnSpeedVal) btnSpeedVal.textContent = '1.0x';
+            if (player) player.playbackRate = 1.0;
 
             // Smooth reveal of result
             setTimeout(() => {
-                statusBox.style.display = 'none';
-                resultCard.style.display = 'block';
-                resultCard.scrollIntoView({ behavior: 'smooth' });
+                if (statusBox) statusBox.style.display = 'none';
+                if (resultCard) {
+                    resultCard.style.display = 'block';
+                    resultCard.scrollIntoView({ behavior: 'smooth' });
+                }
                 showToast('🎉 Вертикальный Reel успешно смонтирован!', 'success', 5000);
             }, 600);
         } else {
             stopProgressAnimation(false);
-            statusBox.style.display = 'none';
-            showToast('Ошибка монтажа: ' + (data.message || 'Неизвестная ошибка'), 'error', 6000);
+            if (statusBox) statusBox.style.display = 'none';
+            showToast('Ошибка монтажа: ' + (data.message || 'Неизвестная ошибка сервера'), 'error', 6000);
         }
     } catch (err) {
         stopProgressAnimation(false);
-        statusBox.style.display = 'none';
+        if (statusBox) statusBox.style.display = 'none';
         showToast('Сбой связи с сервером: ' + err.message, 'error', 6000);
     } finally {
-        btn.disabled = false;
+        isGenerating = false;
+        if (btn) {
+            btn.disabled = false;
+            btn.classList.remove('loading');
+            btn.innerHTML = '<span class="btn-icon">🎬</span><span class="btn-text">Смонтировать вертикальный Reel (20 сек)</span>';
+        }
+    }
+}
+
+// Make accessible to global scope
+window.startGeneration = startGeneration;
+
+// ==============================================================================
+// 6. INTERACTIVE VIDEO SPEED CONTROLLER & EXPORTER
+// ==============================================================================
+function setupSpeedControlListeners() {
+    const videoSpeedSlider = document.getElementById('videoSpeedSlider');
+    const speedValue = document.getElementById('speedValue');
+    const downloadSpeedBtn = document.getElementById('downloadSpeedBtn');
+    const resultPlayer = document.getElementById('resultPlayer');
+
+    if (!videoSpeedSlider || !resultPlayer) return;
+
+    // Instant playback speed adjustment
+    videoSpeedSlider.addEventListener('input', () => {
+        const speed = parseFloat(videoSpeedSlider.value);
+        const speedFormatted = (speed % 1 === 0 ? speed.toFixed(1) : speed.toString()) + 'x';
+        if (speedValue) speedValue.textContent = speedFormatted;
+        const currentBtnVal = document.getElementById('btnSpeedVal');
+        if (currentBtnVal) currentBtnVal.textContent = speedFormatted;
+        resultPlayer.playbackRate = speed;
+    });
+
+    // Ensure playback rate is maintained when video starts or reloads
+    resultPlayer.addEventListener('play', () => {
+        const speed = parseFloat(videoSpeedSlider.value || 1.0);
+        resultPlayer.playbackRate = speed;
+    });
+
+    resultPlayer.addEventListener('loadedmetadata', () => {
+        const speed = parseFloat(videoSpeedSlider.value || 1.0);
+        resultPlayer.playbackRate = speed;
+    });
+
+    // Download speed-adjusted video via FFmpeg backend (/export_speed)
+    if (downloadSpeedBtn) {
+        downloadSpeedBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const currentSpeed = parseFloat(videoSpeedSlider.value || 1.0);
+            const speedFormatted = (currentSpeed % 1 === 0 ? currentSpeed.toFixed(1) : currentSpeed.toString()) + 'x';
+
+            const btnLabel = downloadSpeedBtn.querySelector('.speed-btn-label') || downloadSpeedBtn;
+            const btnIcon = downloadSpeedBtn.querySelector('.speed-btn-icon');
+
+            downloadSpeedBtn.disabled = true;
+            if (btnIcon) btnIcon.textContent = '⏳';
+            if (btnLabel) btnLabel.textContent = 'Обработка (FFmpeg)...';
+
+            try {
+                const response = await fetch('/export_speed', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ speed: currentSpeed })
+                });
+
+                if (!response.ok) {
+                    let errMsg = `Сбой сервера (${response.status})`;
+                    try {
+                        const errData = await response.json();
+                        errMsg = errData.message || errMsg;
+                    } catch (_) {}
+                    throw new Error(errMsg);
+                }
+
+                const contentType = response.headers.get('content-type') || '';
+                const downloadFilename = `kitartchef_${currentSpeed}x.mp4`;
+
+                if (contentType.includes('application/json')) {
+                    const data = await response.json();
+                    if (data.status === 'ok' && data.download_url) {
+                        const a = document.createElement('a');
+                        a.href = data.download_url + '?t=' + new Date().getTime();
+                        a.download = data.filename || downloadFilename;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        showToast(`🎉 Видео со скоростью ${speedFormatted} успешно скачано!`, 'success', 5000);
+                    } else {
+                        throw new Error(data.message || 'Ошибка генерации ускоренного видео');
+                    }
+                } else {
+                    // Binary blob response (send_file attachment)
+                    const blob = await response.blob();
+                    const blobUrl = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = blobUrl;
+                    a.download = downloadFilename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    // Do NOT revoke immediately as that cancels the download in Chromium!
+                    setTimeout(() => window.URL.revokeObjectURL(blobUrl), 60000);
+
+                    showToast(`🎉 Видео со скоростью ${speedFormatted} успешно скачано!`, 'success', 5000);
+                }
+            } catch (err) {
+                showToast('Ошибка изменения скорости: ' + err.message, 'error', 6000);
+            } finally {
+                downloadSpeedBtn.disabled = false;
+                if (btnIcon) btnIcon.textContent = '⚡';
+                if (btnLabel) {
+                    btnLabel.innerHTML = `Скачать с этой скоростью (<span id="btnSpeedVal">${speedFormatted}</span>)`;
+                }
+            }
+        });
     }
 }
 
